@@ -9,6 +9,7 @@ const __dirname = path.dirname(__filename)
 const DEFAULT_WIDGET_URL = 'http://127.0.0.1:5173/desktop-widget'
 
 let widgetWindow = null
+let dragState = null
 
 function resolveWidgetUrl() {
   return process.env.DESKTOP_WIDGET_URL || process.env.VITE_DEV_SERVER_URL || DEFAULT_WIDGET_URL
@@ -22,6 +23,7 @@ function createWidgetWindow() {
   widgetWindow.loadURL(resolveWidgetUrl())
   widgetWindow.on('closed', () => {
     widgetWindow = null
+    dragState = null
   })
 }
 
@@ -47,4 +49,21 @@ ipcMain.on('desktop-widget:close', () => {
 
 ipcMain.on('desktop-widget:reload', () => {
   widgetWindow?.reload()
+})
+
+ipcMain.on('desktop-widget:drag-start', (_e, screenX, screenY) => {
+  if (!widgetWindow) return
+  const [winX, winY] = widgetWindow.getPosition()
+  dragState = { startScreenX: screenX, startScreenY: screenY, winX, winY }
+})
+
+ipcMain.on('desktop-widget:drag-move', (_e, screenX, screenY) => {
+  if (!widgetWindow || !dragState) return
+  const dx = screenX - dragState.startScreenX
+  const dy = screenY - dragState.startScreenY
+  widgetWindow.setPosition(dragState.winX + dx, dragState.winY + dy)
+})
+
+ipcMain.on('desktop-widget:drag-end', () => {
+  dragState = null
 })

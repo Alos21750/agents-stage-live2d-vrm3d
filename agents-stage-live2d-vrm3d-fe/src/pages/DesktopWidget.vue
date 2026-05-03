@@ -35,11 +35,6 @@
       </div>
     </footer>
 
-    <div class="resize-corner" aria-hidden="true">
-      <span></span>
-      <span></span>
-      <span></span>
-    </div>
   </main>
 </template>
 
@@ -59,25 +54,34 @@ const statusClass = computed(() => ({
   'is-disconnected': monitor.connectionStatus.value === 'disconnected',
   'is-connected': monitor.connectionStatus.value === 'connected',
 }))
-const claudeQuota = computed(() => formatBrandQuota(pickLatestActiveSessionForBrand('claude')))
-const codexQuota = computed(() => formatBrandQuota(pickLatestActiveSessionForBrand('codex')))
+const claudeQuota = computed(() => formatBrandQuota(pickLatestSessionForBrand('claude')))
+const codexQuota = computed(() => formatBrandQuota(pickLatestSessionForBrand('codex')))
 
-function pickLatestActiveSessionForBrand(brand: 'codex' | 'claude'): DesktopWidgetSession | null {
+function pickLatestSessionForBrand(brand: 'codex' | 'claude'): DesktopWidgetSession | null {
   return monitor.sessions.value
-    .filter((s) => s.active === true)
     .filter((s) => !isDesktopWidgetWarmupSession(s))
     .filter((s) => (s.agent_brand || 'codex').toLowerCase() === brand)
     .sort((a, b) => getSessionActivityEpoch(b) - getSessionActivityEpoch(a))[0] || null
 }
 
 function formatBrandQuota(session: DesktopWidgetSession | null): string {
-  if (!session) return '—'
-  const p = session.context?.primary_rate_remaining_percent
-  const s = session.context?.secondary_rate_remaining_percent
-  const parts: string[] = []
-  if (typeof p === 'number') parts.push(`P ${Math.round(p)}%`)
-  if (typeof s === 'number') parts.push(`S ${Math.round(s)}%`)
-  return parts.join(' / ') || '—'
+  if (!session?.context) return '—'
+  const ctx = session.context
+  const p = ctx.primary_rate_remaining_percent
+  const s = ctx.secondary_rate_remaining_percent
+  if (typeof p === 'number' || typeof s === 'number') {
+    const parts: string[] = []
+    if (typeof p === 'number') parts.push(`P ${Math.round(p)}%`)
+    if (typeof s === 'number') parts.push(`S ${Math.round(s)}%`)
+    return parts.join(' / ')
+  }
+  const used = ctx.total_tokens
+  const limit = ctx.model_context_window
+  if (typeof used === 'number' && typeof limit === 'number' && limit > 0) {
+    const pct = Math.round((used / limit) * 100)
+    return `${pct}% ctx`
+  }
+  return '—'
 }
 
 function loadInitialModelKey(): string {
@@ -182,15 +186,15 @@ function reloadWindow(): void {
   z-index: 10;
   max-width: calc(100% - 70px);
   padding: 5px 8px;
-  border: 1px solid rgb(255 255 255 / 18%);
+  border: 1px solid rgb(255 255 255 / 12%);
   border-radius: 8px;
   color: #f8fbff;
   font-size: 12px;
   font-weight: 800;
   line-height: 1.2;
   background: rgb(12 18 28 / 72%);
-  box-shadow: 0 4px 16px rgb(0 0 0 / 14%);
-  backdrop-filter: blur(10px);
+  box-shadow: none;
+  backdrop-filter: blur(8px);
   cursor: pointer;
   user-select: text;
 }
@@ -225,14 +229,14 @@ function reloadWindow(): void {
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  border: 1px solid rgb(255 255 255 / 18%);
+  border: 1px solid rgb(255 255 255 / 14%);
   border-radius: 8px;
   color: #f8fbff;
   font-size: 13px;
   font-weight: 700;
   line-height: 1.2;
   background: rgb(20 28 40 / 74%);
-  box-shadow: 0 6px 18px rgb(0 0 0 / 14%);
+  box-shadow: none;
   backdrop-filter: blur(10px);
 }
 
@@ -250,20 +254,29 @@ function reloadWindow(): void {
 }
 
 .desktop-widget-status {
-  display: grid;
-  gap: 5px;
-  padding: 10px 14px 16px;
-  border-top: 1px solid rgb(255 255 255 / 14%);
-  background: linear-gradient(180deg, transparent, rgb(14 19 28 / 80%) 40%, rgb(14 19 28 / 86%));
-  backdrop-filter: blur(12px);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 6px 12px 12px;
+  border-top: none;
+  background: transparent;
+  backdrop-filter: none;
 }
 
 .session-row,
 .quota-row {
-  display: flex;
+  display: inline-flex;
   min-width: 0;
+  max-width: 100%;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  overflow: hidden;
+  padding: 3px 8px;
+  border-radius: 8px;
+  background: rgb(12 18 28 / 56%);
+  text-shadow: 0 1px 2px rgb(0 0 0 / 60%);
+  backdrop-filter: blur(6px);
 }
 
 .brand {
@@ -311,39 +324,5 @@ function reloadWindow(): void {
   font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.resize-corner {
-  position: absolute;
-  right: 5px;
-  bottom: 5px;
-  z-index: 30;
-  display: grid;
-  width: 22px;
-  height: 22px;
-  align-content: end;
-  justify-items: end;
-  gap: 2px;
-  pointer-events: none;
-}
-
-.resize-corner span {
-  display: block;
-  height: 2px;
-  border-radius: 999px;
-  background: rgb(222 239 255 / 90%);
-  box-shadow: 0 1px 8px rgb(0 0 0 / 25%);
-}
-
-.resize-corner span:nth-child(1) {
-  width: 7px;
-}
-
-.resize-corner span:nth-child(2) {
-  width: 12px;
-}
-
-.resize-corner span:nth-child(3) {
-  width: 17px;
 }
 </style>

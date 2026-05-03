@@ -1,5 +1,12 @@
 <template>
-  <canvas ref="canvasRef" class="desktop-widget-live2d" @pointerdown="handleCanvasClick"></canvas>
+  <canvas
+    ref="canvasRef"
+    class="desktop-widget-live2d"
+    @pointerdown="handleCanvasPointerDown"
+    @pointermove="handleCanvasPointerMove"
+    @pointerup="handleCanvasPointerUp"
+    @pointercancel="handleCanvasPointerCancel"
+  ></canvas>
 </template>
 
 <script setup lang="ts">
@@ -33,6 +40,8 @@ const STATE_MOTION_CANDIDATES: Record<SessionState, string[]> = {
 const MIN_MODEL_SCALE = 0.06
 const IDLE_MOTION_INTERVAL_MS = 10_000
 const IDLE_MOTION_JITTER_MS = 2_500
+const DRAG_THRESHOLD_PX = 5
+const CLICK_MAX_DURATION_MS = 350
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 let app: PIXI.Application | null = null
@@ -43,6 +52,8 @@ let layoutWarmupTicks = 0
 let idleMotionTimer: number | null = null
 let nextIdleMotionAt = 0
 let loadToken = 0
+let pointerStart: { screenX: number; screenY: number; ts: number; pointerId: number } | null = null
+let dragging = false
 
 Live2DModelCubism4.registerTicker(PIXI.Ticker)
 Live2DModelCubism2.registerTicker(PIXI.Ticker)
@@ -181,6 +192,56 @@ async function handleCanvasClick(): Promise<void> {
   } finally {
     scheduleNextIdleMotion()
   }
+}
+
+function handleCanvasPointerDown(e: PointerEvent): void {
+  pointerStart = { screenX: e.screenX, screenY: e.screenY, ts: Date.now(), pointerId: e.pointerId }
+  dragging = false
+  ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
+}
+
+function handleCanvasPointerMove(e: PointerEvent): void {
+  if (!pointerStart || e.buttons === 0) return
+  const dx = e.screenX - pointerStart.screenX
+  const dy = e.screenY - pointerStart.screenY
+  if (!dragging && Math.hypot(dx, dy) > DRAG_THRESHOLD_PX) {
+    dragging = true
+    window.desktopWidget?.startDrag?.(pointerStart.screenX, pointerStart.screenY)
+  }
+  if (dragging) {
+    window.desktopWidget?.dragMove?.(e.screenX, e.screenY)
+  }
+}
+
+function finishPointer(target: HTMLElement | null, pointerId: number | undefined): void {
+  if (target && pointerId != null) {
+    try {
+      target.releasePointerCapture?.(pointerId)
+    } catch {
+      // ignore stale pointer capture
+    }
+  }
+  pointerStart = null
+  dragging = false
+}
+
+function handleCanvasPointerUp(e: PointerEvent): void {
+  if (!pointerStart) return
+  const moved = Math.hypot(e.screenX - pointerStart.screenX, e.screenY - pointerStart.screenY)
+  const duration = Date.now() - pointerStart.ts
+  if (dragging) {
+    window.desktopWidget?.endDrag?.()
+  } else if (moved <= DRAG_THRESHOLD_PX && duration <= CLICK_MAX_DURATION_MS) {
+    void handleCanvasClick()
+  }
+  finishPointer(e.currentTarget as HTMLElement, e.pointerId)
+}
+
+function handleCanvasPointerCancel(e: PointerEvent): void {
+  if (dragging) {
+    window.desktopWidget?.endDrag?.()
+  }
+  finishPointer(e.currentTarget as HTMLElement, e.pointerId)
 }
 
 function scheduleNextIdleMotion(nowMs = Date.now()): void {

@@ -4,6 +4,9 @@ interface Window {
   desktopWidget?: {
     close: () => void
     reload: () => void
+    startDrag?: (screenX: number, screenY: number) => void
+    dragMove?: (screenX: number, screenY: number) => void
+    endDrag?: () => void
   }
 }
 
