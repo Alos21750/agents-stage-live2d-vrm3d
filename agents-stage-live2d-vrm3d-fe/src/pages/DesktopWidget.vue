@@ -6,6 +6,7 @@
     </div>
 
     <section class="desktop-widget-stage" :class="statusClass">
+      <div class="drag-handle" aria-hidden="true"></div>
       <select v-model="selectedModelKey" class="desktop-widget-model-picker no-drag" aria-label="Live2D character">
         <option v-for="item in EMILIA_MODELS" :key="item.key" :value="item.key">
           {{ item.displayName }}
@@ -24,10 +25,13 @@
         <span class="brand">{{ monitor.brandName.value }}</span>
         <span class="session-name">{{ sessionName }}</span>
       </div>
-      <div class="meta-row">
-        <span>{{ monitor.cwdLabel.value }}</span>
-        <span v-if="monitor.rateLimitText.value">{{ monitor.rateLimitText.value }}</span>
-        <span v-if="monitor.lastEventText.value">{{ monitor.lastEventText.value }}</span>
+      <div class="quota-row">
+        <span class="brand-label brand-label--claude">Claude</span>
+        <span class="quota-value">{{ claudeQuota }}</span>
+      </div>
+      <div class="quota-row">
+        <span class="brand-label brand-label--codex">Codex</span>
+        <span class="quota-value">{{ codexQuota }}</span>
       </div>
     </footer>
 
@@ -42,7 +46,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import DesktopWidgetLive2D from '../components/desktop-widget/DesktopWidgetLive2D.vue'
-import { useDesktopWidgetMonitor } from './desktop-widget/desktopWidgetMonitor'
+import { getSessionActivityEpoch } from '../utils/sessionStageState'
+import { isDesktopWidgetWarmupSession, useDesktopWidgetMonitor } from './desktop-widget/desktopWidgetMonitor'
+import type { DesktopWidgetSession } from './desktop-widget/desktopWidgetMonitor'
 import { DEFAULT_EMILIA_KEY, EMILIA_MODELS, isValidEmiliaKey } from './desktop-widget/emiliaModels'
 
 const monitor = useDesktopWidgetMonitor()
@@ -53,6 +59,26 @@ const statusClass = computed(() => ({
   'is-disconnected': monitor.connectionStatus.value === 'disconnected',
   'is-connected': monitor.connectionStatus.value === 'connected',
 }))
+const claudeQuota = computed(() => formatBrandQuota(pickLatestActiveSessionForBrand('claude')))
+const codexQuota = computed(() => formatBrandQuota(pickLatestActiveSessionForBrand('codex')))
+
+function pickLatestActiveSessionForBrand(brand: 'codex' | 'claude'): DesktopWidgetSession | null {
+  return monitor.sessions.value
+    .filter((s) => s.active === true)
+    .filter((s) => !isDesktopWidgetWarmupSession(s))
+    .filter((s) => (s.agent_brand || 'codex').toLowerCase() === brand)
+    .sort((a, b) => getSessionActivityEpoch(b) - getSessionActivityEpoch(a))[0] || null
+}
+
+function formatBrandQuota(session: DesktopWidgetSession | null): string {
+  if (!session) return '—'
+  const p = session.context?.primary_rate_remaining_percent
+  const s = session.context?.secondary_rate_remaining_percent
+  const parts: string[] = []
+  if (typeof p === 'number') parts.push(`P ${Math.round(p)}%`)
+  if (typeof s === 'number') parts.push(`S ${Math.round(s)}%`)
+  return parts.join(' / ') || '—'
+}
 
 function loadInitialModelKey(): string {
   try {
@@ -88,6 +114,7 @@ function reloadWindow(): void {
   width: 100vw;
   height: 100vh;
   overflow: hidden;
+  border-radius: 16px;
   color: #f8fbff;
   background: transparent;
   user-select: none;
@@ -132,7 +159,20 @@ function reloadWindow(): void {
 .desktop-widget-stage {
   position: relative;
   min-height: 0;
-  padding: 20px 18px 0;
+  padding: 36px 18px 0;
+}
+
+.drag-handle {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  z-index: 5;
+  width: 44px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 36%);
+  pointer-events: none;
+  transform: translateX(-50%);
 }
 
 .desktop-widget-model-picker {
@@ -142,14 +182,14 @@ function reloadWindow(): void {
   z-index: 10;
   max-width: calc(100% - 70px);
   padding: 5px 8px;
-  border: 1px solid rgb(255 255 255 / 24%);
+  border: 1px solid rgb(255 255 255 / 18%);
   border-radius: 8px;
   color: #f8fbff;
   font-size: 12px;
   font-weight: 800;
   line-height: 1.2;
   background: rgb(12 18 28 / 72%);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 14%);
   backdrop-filter: blur(10px);
   cursor: pointer;
   user-select: text;
@@ -185,14 +225,14 @@ function reloadWindow(): void {
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  border: 1px solid rgb(255 255 255 / 24%);
+  border: 1px solid rgb(255 255 255 / 18%);
   border-radius: 8px;
   color: #f8fbff;
   font-size: 13px;
   font-weight: 700;
   line-height: 1.2;
   background: rgb(20 28 40 / 74%);
-  box-shadow: 0 12px 28px rgb(0 0 0 / 18%);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 14%);
   backdrop-filter: blur(10px);
 }
 
@@ -214,12 +254,12 @@ function reloadWindow(): void {
   gap: 5px;
   padding: 10px 14px 16px;
   border-top: 1px solid rgb(255 255 255 / 14%);
-  background: linear-gradient(180deg, rgb(14 19 28 / 38%), rgb(14 19 28 / 78%));
+  background: linear-gradient(180deg, transparent, rgb(14 19 28 / 80%) 40%, rgb(14 19 28 / 86%));
   backdrop-filter: blur(12px);
 }
 
 .session-row,
-.meta-row {
+.quota-row {
   display: flex;
   min-width: 0;
   align-items: center;
@@ -245,15 +285,30 @@ function reloadWindow(): void {
   white-space: nowrap;
 }
 
-.meta-row {
+.quota-row .brand-label {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  border-radius: 6px;
+  color: #0f1722;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.quota-row .brand-label--claude {
+  background: #ffd5b1;
+}
+
+.quota-row .brand-label--codex {
+  background: #d8f3ff;
+}
+
+.quota-row .quota-value {
+  min-width: 0;
   overflow: hidden;
   color: #d7e2f0;
   font-size: 11px;
-}
-
-.meta-row span {
-  min-width: 0;
-  overflow: hidden;
+  font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
