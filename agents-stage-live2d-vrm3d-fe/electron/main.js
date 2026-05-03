@@ -53,14 +53,21 @@ ipcMain.on('desktop-widget:reload', () => {
 
 ipcMain.on('desktop-widget:drag-start', (_e, screenX, screenY) => {
   if (!widgetWindow) return
+  if (!Number.isFinite(screenX) || !Number.isFinite(screenY)) return
   const [winX, winY] = widgetWindow.getPosition()
-  dragState = { startScreenX: screenX, startScreenY: screenY, winX, winY }
+  dragState = {
+    startScreenX: Math.round(screenX),
+    startScreenY: Math.round(screenY),
+    winX,
+    winY,
+  }
 })
 
 ipcMain.on('desktop-widget:drag-move', (_e, screenX, screenY) => {
   if (!widgetWindow || !dragState) return
-  const dx = screenX - dragState.startScreenX
-  const dy = screenY - dragState.startScreenY
+  if (!Number.isFinite(screenX) || !Number.isFinite(screenY)) return
+  const dx = Math.round(screenX) - dragState.startScreenX
+  const dy = Math.round(screenY) - dragState.startScreenY
   widgetWindow.setPosition(dragState.winX + dx, dragState.winY + dy)
 })
 

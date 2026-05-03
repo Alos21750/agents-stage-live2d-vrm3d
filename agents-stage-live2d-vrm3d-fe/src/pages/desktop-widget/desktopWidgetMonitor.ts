@@ -34,9 +34,22 @@ export interface DesktopWidgetSession {
   context?: SessionSnapshotItem['context']
 }
 
+export interface ClaudeUsageBucket {
+  utilization: number
+  remaining: number
+  resets_at?: string
+}
+
+export interface ClaudeUsage {
+  five_hour: ClaudeUsageBucket | null
+  seven_day: ClaudeUsageBucket | null
+  extra_usage: { is_enabled: boolean; utilization: number | null } | null
+}
+
 export interface DesktopWidgetMonitor {
   connectionStatus: Ref<DesktopWidgetConnectionStatus>
   sessions: Ref<DesktopWidgetSession[]>
+  claudeUsage: Ref<ClaudeUsage | null>
   activeSession: ComputedRef<DesktopWidgetSession | null>
   activeState: ComputedRef<SessionState>
   activeStateText: ComputedRef<string>
@@ -77,6 +90,7 @@ export interface DesktopWidgetMonitorOptions {
 const DEFAULT_HISTORY_LIMIT = 100
 const DEFAULT_RECONNECT_BASE_DELAY_MS = 1000
 const DEFAULT_RECONNECT_MAX_DELAY_MS = 10000
+const USAGE_POLL_MS = 30_000
 
 function toSession(item: SessionHistoryItem | DesktopWidgetSession): DesktopWidgetSession {
   return {
@@ -164,6 +178,7 @@ export function useDesktopWidgetMonitor(options: DesktopWidgetMonitorOptions = {
 
   const connectionStatus = ref<DesktopWidgetConnectionStatus>('connecting')
   const sessions = ref<DesktopWidgetSession[]>([])
+  const claudeUsage = ref<ClaudeUsage | null>(null)
   const activeSession = computed(() => pickDesktopWidgetActiveSession(sessions.value))
   const activeState = computed<SessionState>(() => activeSession.value?.state || 'IDLE')
   const activeStateText = computed(() => {
@@ -179,6 +194,7 @@ export function useDesktopWidgetMonitor(options: DesktopWidgetMonitorOptions = {
   let disposed = false
   let reconnectAttempt = 0
   let reconnectTimer: number | null = null
+  let usagePollTimer: number | null = null
 
   function clearReconnectTimer(): void {
     if (reconnectTimer === null) return
@@ -200,6 +216,17 @@ export function useDesktopWidgetMonitor(options: DesktopWidgetMonitorOptions = {
     const response = await fetchHistory(serverUrl, historyLimit)
     const incoming = (response.sessions || []).map(toSession)
     sessions.value = mergeHistorySessions(sessions.value, incoming, historyLimit).map(toSession)
+  }
+
+  async function refreshClaudeUsage(): Promise<void> {
+    try {
+      const url = `${(serverUrl || '').replace(/\/+$/, '')}/api/session-bridge/claude-usage`
+      const response = await fetch(url)
+      if (!response.ok) return
+      claudeUsage.value = (await response.json()) as ClaudeUsage
+    } catch {
+      // keep the last successful usage value
+    }
   }
 
   function connect(): void {
@@ -250,6 +277,10 @@ export function useDesktopWidgetMonitor(options: DesktopWidgetMonitorOptions = {
   function disconnect(): void {
     disposed = true
     clearReconnectTimer()
+    if (usagePollTimer !== null) {
+      window.clearInterval(usagePollTimer)
+      usagePollTimer = null
+    }
     if (!ws) return
     try {
       ws.close()
@@ -261,6 +292,10 @@ export function useDesktopWidgetMonitor(options: DesktopWidgetMonitorOptions = {
 
   if (getCurrentInstance()) {
     onMounted(async () => {
+      void refreshClaudeUsage()
+      usagePollTimer = window.setInterval(() => {
+        void refreshClaudeUsage()
+      }, USAGE_POLL_MS)
       try {
         await refreshHistory()
       } catch {
@@ -279,6 +314,7 @@ export function useDesktopWidgetMonitor(options: DesktopWidgetMonitorOptions = {
   return {
     connectionStatus,
     sessions,
+    claudeUsage,
     activeSession,
     activeState,
     activeStateText,

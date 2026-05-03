@@ -54,7 +54,18 @@ const statusClass = computed(() => ({
   'is-disconnected': monitor.connectionStatus.value === 'disconnected',
   'is-connected': monitor.connectionStatus.value === 'connected',
 }))
-const claudeQuota = computed(() => formatBrandQuota(pickLatestSessionForBrand('claude')))
+const claudeQuota = computed(() => {
+  const usage = monitor.claudeUsage.value
+  if (usage) {
+    const fiveHour = usage.five_hour?.remaining
+    const sevenDay = usage.seven_day?.remaining
+    const parts: string[] = []
+    if (typeof fiveHour === 'number') parts.push(`5h ${Math.round(fiveHour)}%`)
+    if (typeof sevenDay === 'number') parts.push(`7d ${Math.round(sevenDay)}%`)
+    if (parts.length > 0) return parts.join(' / ')
+  }
+  return formatBrandQuota(pickLatestSessionForBrand('claude'))
+})
 const codexQuota = computed(() => formatBrandQuota(pickLatestSessionForBrand('codex')))
 
 function pickLatestSessionForBrand(brand: 'codex' | 'claude'): DesktopWidgetSession | null {
@@ -185,14 +196,14 @@ function reloadWindow(): void {
   left: 12px;
   z-index: 10;
   max-width: calc(100% - 70px);
-  padding: 5px 8px;
-  border: 1px solid rgb(255 255 255 / 12%);
+  padding: 4px 8px;
+  border: none;
   border-radius: 8px;
   color: #f8fbff;
   font-size: 12px;
   font-weight: 800;
   line-height: 1.2;
-  background: rgb(12 18 28 / 72%);
+  background: rgb(12 18 28 / 48%);
   box-shadow: none;
   backdrop-filter: blur(8px);
   cursor: pointer;

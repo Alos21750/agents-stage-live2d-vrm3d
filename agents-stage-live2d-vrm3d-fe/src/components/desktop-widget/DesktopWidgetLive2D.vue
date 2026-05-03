@@ -195,21 +195,28 @@ async function handleCanvasClick(): Promise<void> {
 }
 
 function handleCanvasPointerDown(e: PointerEvent): void {
-  pointerStart = { screenX: e.screenX, screenY: e.screenY, ts: Date.now(), pointerId: e.pointerId }
+  pointerStart = {
+    screenX: Math.round(e.screenX),
+    screenY: Math.round(e.screenY),
+    ts: Date.now(),
+    pointerId: e.pointerId,
+  }
   dragging = false
   ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
 }
 
 function handleCanvasPointerMove(e: PointerEvent): void {
   if (!pointerStart || e.buttons === 0) return
-  const dx = e.screenX - pointerStart.screenX
-  const dy = e.screenY - pointerStart.screenY
+  const ex = Math.round(e.screenX)
+  const ey = Math.round(e.screenY)
+  const dx = ex - pointerStart.screenX
+  const dy = ey - pointerStart.screenY
   if (!dragging && Math.hypot(dx, dy) > DRAG_THRESHOLD_PX) {
     dragging = true
     window.desktopWidget?.startDrag?.(pointerStart.screenX, pointerStart.screenY)
   }
   if (dragging) {
-    window.desktopWidget?.dragMove?.(e.screenX, e.screenY)
+    window.desktopWidget?.dragMove?.(ex, ey)
   }
 }
 
@@ -227,7 +234,9 @@ function finishPointer(target: HTMLElement | null, pointerId: number | undefined
 
 function handleCanvasPointerUp(e: PointerEvent): void {
   if (!pointerStart) return
-  const moved = Math.hypot(e.screenX - pointerStart.screenX, e.screenY - pointerStart.screenY)
+  const ex = Math.round(e.screenX)
+  const ey = Math.round(e.screenY)
+  const moved = Math.hypot(ex - pointerStart.screenX, ey - pointerStart.screenY)
   const duration = Date.now() - pointerStart.ts
   if (dragging) {
     window.desktopWidget?.endDrag?.()
@@ -390,6 +399,7 @@ watch(
   display: block;
   width: 100%;
   height: 100%;
+  filter: drop-shadow(0 2px 8px rgb(0 0 0 / 35%));
   -webkit-app-region: no-drag;
   cursor: pointer;
 }
