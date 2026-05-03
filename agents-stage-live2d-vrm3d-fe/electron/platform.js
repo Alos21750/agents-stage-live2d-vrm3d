@@ -6,12 +6,20 @@ function isWindows() {
   return process.platform === 'win32'
 }
 
+function readSize(envKey, fallback, min, max) {
+  const raw = parseInt(process.env[envKey] || '', 10)
+  if (Number.isFinite(raw) && raw >= min && raw <= max) return raw
+  return fallback
+}
+
 export function buildWidgetWindowOptions(preloadPath) {
+  const width = readSize('WIDGET_WIDTH', 280, 220, 1200)
+  const height = readSize('WIDGET_HEIGHT', 400, 300, 1600)
   const shared = {
-    width: 360,
-    height: 520,
-    minWidth: 260,
-    minHeight: 360,
+    width,
+    height,
+    minWidth: 220,
+    minHeight: 300,
     frame: false,
     resizable: true,
     alwaysOnTop: true,
