@@ -6,7 +6,13 @@
     </div>
 
     <section class="desktop-widget-stage" :class="statusClass">
-      <DesktopWidgetLive2D :state="monitor.activeState.value" />
+      <select v-model="selectedModelKey" class="desktop-widget-model-picker no-drag" aria-label="Live2D character">
+        <option v-for="item in EMILIA_MODELS" :key="item.key" :value="item.key">
+          {{ item.displayName }}
+        </option>
+      </select>
+
+      <DesktopWidgetLive2D :state="monitor.activeState.value" :modelKey="selectedModelKey" />
       <div class="status-bubble">
         <span class="status-dot"></span>
         <span>{{ monitor.activeStateText.value }}</span>
@@ -34,17 +40,36 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import DesktopWidgetLive2D from '../components/desktop-widget/DesktopWidgetLive2D.vue'
 import { useDesktopWidgetMonitor } from './desktop-widget/desktopWidgetMonitor'
+import { DEFAULT_EMILIA_KEY, EMILIA_MODELS, isValidEmiliaKey } from './desktop-widget/emiliaModels'
 
 const monitor = useDesktopWidgetMonitor()
+const selectedModelKey = ref<string>(loadInitialModelKey())
 
 const sessionName = computed(() => monitor.activeSession.value?.display_name || 'Bridge monitor')
 const statusClass = computed(() => ({
   'is-disconnected': monitor.connectionStatus.value === 'disconnected',
   'is-connected': monitor.connectionStatus.value === 'connected',
 }))
+
+function loadInitialModelKey(): string {
+  try {
+    const stored = localStorage.getItem('desktopWidget.modelKey') || ''
+    return isValidEmiliaKey(stored) ? stored : DEFAULT_EMILIA_KEY
+  } catch {
+    return DEFAULT_EMILIA_KEY
+  }
+}
+
+watch(selectedModelKey, (key) => {
+  try {
+    localStorage.setItem('desktopWidget.modelKey', key)
+  } catch {
+    // ignore unavailable storage
+  }
+})
 
 function closeWindow(): void {
   window.desktopWidget?.close()
@@ -100,10 +125,39 @@ function reloadWindow(): void {
   cursor: pointer;
 }
 
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
 .desktop-widget-stage {
   position: relative;
   min-height: 0;
   padding: 20px 18px 0;
+}
+
+.desktop-widget-model-picker {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 10;
+  max-width: calc(100% - 70px);
+  padding: 5px 8px;
+  border: 1px solid rgb(255 255 255 / 24%);
+  border-radius: 8px;
+  color: #f8fbff;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.2;
+  background: rgb(12 18 28 / 72%);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+  backdrop-filter: blur(10px);
+  cursor: pointer;
+  user-select: text;
+}
+
+.desktop-widget-model-picker option {
+  color: #0f1722;
+  background: #f8fbff;
 }
 
 .desktop-widget-stage::after {

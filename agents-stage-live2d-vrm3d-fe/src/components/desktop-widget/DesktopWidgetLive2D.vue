@@ -1,9 +1,9 @@
 <template>
-  <canvas ref="canvasRef" class="desktop-widget-live2d"></canvas>
+  <canvas ref="canvasRef" class="desktop-widget-live2d" @pointerdown="handleCanvasClick"></canvas>
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import * as PIXI from 'pixi.js'
 import { Live2DModel as Live2DModelCubism4 } from 'pixi-live2d-display/cubism4'
 import { Live2DModel as Live2DModelCubism2 } from 'pixi-live2d-display/cubism2'
@@ -11,10 +11,11 @@ import type { SessionState } from '../../types/sessionState'
 
 const props = withDefaults(defineProps<{
   state: SessionState
-  modelPath?: string
+  modelKey?: string
 }>(), {
-  modelPath: 'assets/models/fn57_2203/normal/normal.model3.json',
+  modelKey: 'ac_base_emilia01',
 })
+const modelPath = computed(() => `assets/models/rezero/${props.modelKey}/${props.modelKey}.model3.json`)
 
 interface MotionEntry {
   group: string
@@ -41,6 +42,7 @@ let lastMotionKey = ''
 let layoutWarmupTicks = 0
 let idleMotionTimer: number | null = null
 let nextIdleMotionAt = 0
+let loadToken = 0
 
 Live2DModelCubism4.registerTicker(PIXI.Ticker)
 Live2DModelCubism2.registerTicker(PIXI.Ticker)
@@ -134,15 +136,48 @@ async function playStateMotion(state: SessionState): Promise<void> {
   lastMotionKey = motion.key
   try {
     if (typeof model.motion === 'function') {
-      await model.motion(motion.group, motion.index)
-      return
+      const played = await model.motion(motion.group, motion.index)
+      if (played) return
     }
     const manager = model.internalModel?.motionManager
     if (manager && typeof manager.startMotion === 'function') {
       manager.startMotion(motion.group, motion.index)
+      return
     }
   } catch (error) {
+    const manager = model.internalModel?.motionManager
+    if (manager && typeof manager.startMotion === 'function') {
+      manager.startMotion(motion.group, motion.index)
+      return
+    }
     console.warn('Failed to play desktop widget Live2D motion', error)
+  } finally {
+    scheduleNextIdleMotion()
+  }
+}
+
+async function handleCanvasClick(): Promise<void> {
+  if (!model) return
+  const motion = pickRandomMotion(model)
+  if (!motion) return
+  lastMotionKey = motion.key
+  try {
+    if (typeof model.motion === 'function') {
+      const played = await model.motion(motion.group, motion.index)
+      if (played) return
+    }
+    const manager = model.internalModel?.motionManager
+    if (manager && typeof manager.startMotion === 'function') {
+      manager.startMotion(motion.group, motion.index)
+      return
+    }
+  } catch (error) {
+    const manager = model.internalModel?.motionManager
+    if (manager && typeof manager.startMotion === 'function') {
+      manager.startMotion(motion.group, motion.index)
+      return
+    }
+    console.warn('Failed to play click motion', error)
   } finally {
     scheduleNextIdleMotion()
   }
@@ -164,34 +199,71 @@ async function maybePlayIdleMotion(): Promise<void> {
   }
   try {
     if (typeof model.motion === 'function') {
-      await model.motion(motion.group, motion.index)
-    } else {
-      const manager = model.internalModel?.motionManager
-      if (manager && typeof manager.startMotion === 'function') {
-        manager.startMotion(motion.group, motion.index)
+      const played = await model.motion(motion.group, motion.index)
+      if (played) {
+        lastMotionKey = motion.key
+        return
       }
     }
-    lastMotionKey = motion.key
+    const manager = model.internalModel?.motionManager
+    if (manager && typeof manager.startMotion === 'function') {
+      manager.startMotion(motion.group, motion.index)
+      lastMotionKey = motion.key
+      return
+    }
   } catch (error) {
+    const manager = model.internalModel?.motionManager
+    if (manager && typeof manager.startMotion === 'function') {
+      manager.startMotion(motion.group, motion.index)
+      lastMotionKey = motion.key
+      return
+    }
     console.warn('Failed to play desktop widget idle motion', error)
   } finally {
     scheduleNextIdleMotion()
   }
 }
 
-async function loadModel(): Promise<void> {
+async function loadModel(path: string): Promise<void> {
   if (!app) return
-  const ModelClass = props.modelPath.endsWith('.model3.json') ? Live2DModelCubism4 : Live2DModelCubism2
-  const loaded = await ModelClass.from(props.modelPath)
-  if (disposed || !app) {
-    loaded.destroy()
+  const token = ++loadToken
+  const ModelClass = path.endsWith('.model3.json') ? Live2DModelCubism4 : Live2DModelCubism2
+  let loaded: any
+  try {
+    loaded = await ModelClass.from(path)
+  } catch (error) {
+    if (!disposed && token === loadToken) {
+      console.warn('Failed to load Live2D model', path, error)
+    }
     return
+  }
+  if (disposed || !app || token !== loadToken) {
+    try {
+      loaded.destroy()
+    } catch {
+      // ignore stale model cleanup errors
+    }
+    return
+  }
+  if (model) {
+    try {
+      app.stage.removeChild(model)
+    } catch {
+      // ignore stale stage cleanup errors
+    }
+    try {
+      model.destroy()
+    } catch {
+      // ignore stale model cleanup errors
+    }
+    model = null
   }
   model = loaded
   model.zIndex = 1
   app.stage.addChild(model)
   layoutWarmupTicks = 12
   layoutModel()
+  lastMotionKey = ''
   scheduleNextIdleMotion()
   void playStateMotion(props.state)
 }
@@ -217,7 +289,7 @@ onMounted(() => {
   idleMotionTimer = window.setInterval(() => {
     void maybePlayIdleMotion()
   }, 1000)
-  void loadModel()
+  void loadModel(modelPath.value)
 })
 
 onUnmounted(() => {
@@ -243,6 +315,13 @@ watch(
     void playStateMotion(state)
   },
 )
+
+watch(
+  () => props.modelKey,
+  () => {
+    void loadModel(modelPath.value)
+  },
+)
 </script>
 
 <style scoped>
@@ -250,5 +329,7 @@ watch(
   display: block;
   width: 100%;
   height: 100%;
+  -webkit-app-region: no-drag;
+  cursor: pointer;
 }
 </style>

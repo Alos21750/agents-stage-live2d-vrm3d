@@ -37,6 +37,7 @@ mcp_servers/
 /agents-stage-live2d-vrm3d-fe/.npm-cache/
 /agents-stage-live2d-vrm3d-fe/node_modules.broken.*/
 /agents-stage-live2d-vrm3d-fe/dist/
+/agents-stage-live2d-vrm3d-fe/public/assets/models/rezero/
 /agents-stage-live2d-vrm3d-server/.cache/
 /agents-stage-live2d-vrm3d-server/__pycache__/
 /agents-stage-live2d-vrm3d-server/.uv-cache/
